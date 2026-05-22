@@ -72,6 +72,24 @@ export interface RespostaPaginada<T> {
 export type RespostaContratacoes = RespostaPaginada<Contratacao>;
 
 // ============================================================
+// Itens de uma contratação
+// ============================================================
+
+export interface ItemLicitacao {
+  numeroItem:                  number;
+  descricao:                   string;
+  materialOuServico:           string;   // 'M' = Material, 'S' = Serviço
+  unidadeMedida:               string;
+  quantidade:                  number;
+  valorUnitarioEstimado:       number | null;
+  valorTotal:                  number | null;
+  orcamentoSigiloso:           boolean;
+  situacaoCompraItem:          string;
+  criterioJulgamentoNome:      string | null;
+  tipoBeneficioNome:           string | null;
+}
+
+// ============================================================
 // Parâmetros de busca — usados no frontend e no proxy
 // ============================================================
 

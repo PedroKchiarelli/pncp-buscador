@@ -111,6 +111,45 @@ export async function buscarPublicacoes(
 }
 
 // ============================================================
+// Busca itens de uma contratação — sob demanda no card
+// ============================================================
+export async function buscarItens(
+  cnpj: string,
+  ano: number,
+  sequencial: number,
+): Promise<import('@/types/pncp').ItemLicitacao[]> {
+  const url = `${BASE_PNCP}/orgaos/${cnpj}/compras/${ano}/${sequencial}/itens?pagina=1&tamanhoPagina=500`;
+
+  const controller = new AbortController();
+  const timeout    = setTimeout(() => controller.abort(), 10000);
+
+  let resposta: Response;
+  try {
+    resposta = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal:  controller.signal,
+      next:    { revalidate: 300 },
+    });
+  } catch (e: unknown) {
+    clearTimeout(timeout);
+    if (e instanceof Error && e.name === 'AbortError') throw new Error('Timeout ao buscar itens');
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (resposta.status === 404) return [];
+
+  if (!resposta.ok) {
+    throw new Error(`PNCP itens erro ${resposta.status}`);
+  }
+
+  const dados = await resposta.json();
+  // API pode retornar array direto ou objeto paginado { data: [...] }
+  return Array.isArray(dados) ? dados : (dados.data ?? []);
+}
+
+// ============================================================
 // Busca tabela de modalidades (endpoint validado no teste 0E)
 // ============================================================
 export async function buscarModalidades() {
