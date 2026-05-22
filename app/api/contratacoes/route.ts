@@ -1,93 +1,95 @@
 // app/api/contratacoes/route.ts
 // ============================================================
-// Proxy entre o frontend e a API do PNCP.
-// Motivo: evitar CORS no browser, centralizar tratamento de erro,
-// adicionar cache e permitir lógica extra no futuro (ex: favoritos).
+// Consulta licitações no Supabase com filtros SQL.
+// Mantém o mesmo contrato de resposta (RespostaPaginada<Contratacao>)
+// para não quebrar o frontend.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { buscarContratacoes } from '@/lib/pncp';
-import type { FiltrosBusca } from '@/types/pncp';
-
-// Mapa de idUsuario → strings que aparecem no campo usuarioNome da API
-const PORTAL_NOMES: Record<number, string[]> = {
-  1: ['compras.gov', 'comprasnet', 'compras gov'],
-};
+import { supabase } from '@/lib/supabase';
+import { rowToContratacao } from '@/lib/mappers';
+import type { LicitacaoRow } from '@/types/db';
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = request.nextUrl;
+  const sp = request.nextUrl.searchParams;
 
-  const filtros: FiltrosBusca = {};
+  const pagina    = Math.max(1, Number(sp.get('pagina') ?? '1'));
+  const tamPagina = Math.min(100, Math.max(10, Number(sp.get('tamanhoPagina') ?? '50')));
+  const offset    = (pagina - 1) * tamPagina;
 
-  const q = searchParams.get('q');
-  if (q?.trim()) filtros.q = q.trim();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = (supabase.from('licitacoes') as any).select('*', { count: 'exact' });
 
-  const modalidade = searchParams.get('codigoModalidadeContratacao');
-  if (modalidade) filtros.codigoModalidadeContratacao = Number(modalidade);
-
-  // idUsuario: só passa para a API se NÃO houver q= (evita timeout do PNCP)
-  const idUsuarioParam = searchParams.get('idUsuario');
-  const idUsuario = idUsuarioParam ? Number(idUsuarioParam) : null;
-  const filtrarPortalLocalmente = !!(idUsuario && filtros.q);
-
-  if (idUsuario && !filtrarPortalLocalmente) {
-    filtros.idUsuario = idUsuario;
+  // Busca full-text (gerado pelo tsvector objeto_busca)
+  const q = sp.get('q')?.trim();
+  if (q) {
+    query = query.textSearch('objeto_busca', q, { type: 'plain', config: 'portuguese_unaccent' });
   }
 
-  const situacao = searchParams.get('codigoSituacaoCompra');
-  if (situacao) filtros.codigoSituacaoCompra = Number(situacao);
+  // Modalidade
+  const modalidade = sp.get('codigoModalidadeContratacao');
+  if (modalidade) query = query.eq('modalidade_id', Number(modalidade));
 
-  const uf = searchParams.get('ufSigla');
-  if (uf) filtros.ufSigla = uf;
+  // Situação (1=Divulgada, 2=Revogada…)
+  const situacao = sp.get('codigoSituacaoCompra');
+  if (situacao) query = query.eq('situacao_compra_id', Number(situacao));
 
-  const cnpj = searchParams.get('cnpjOrgao');
-  if (cnpj) filtros.cnpjOrgao = cnpj.replace(/\D/g, '');
+  // UF
+  const uf = sp.get('ufSigla');
+  if (uf) query = query.eq('uf_sigla', uf);
 
-  const codigoUnidade = searchParams.get('codigoUnidade');
-  if (codigoUnidade) filtros.codigoUnidade = codigoUnidade;
+  // CNPJ do órgão
+  const cnpj = sp.get('cnpjOrgao');
+  if (cnpj) query = query.eq('orgao_cnpj', cnpj.replace(/\D/g, ''));
 
-  const pagina = searchParams.get('pagina');
-  filtros.pagina = pagina ? Math.max(1, Number(pagina)) : 1;
+  // Código UASG
+  const unidade = sp.get('codigoUnidade');
+  if (unidade) query = query.eq('codigo_unidade', unidade);
 
-  const tamanhoPagina = searchParams.get('tamanhoPagina');
-  filtros.tamanhoPagina = tamanhoPagina ? Math.max(10, Number(tamanhoPagina)) : 10;
-
-  const dataFinal = searchParams.get('dataFinal');
-  if (dataFinal) filtros.dataFinal = dataFinal;
-
-  try {
-    const dados = await buscarContratacoes(filtros);
-
-    // Filtro local de portal quando q= e idUsuario= são usados juntos
-    if (filtrarPortalLocalmente && idUsuario && dados.data) {
-      const termos = PORTAL_NOMES[idUsuario] ?? [];
-      if (termos.length > 0) {
-        dados.data = dados.data.filter(item => {
-          const nome = (item.usuarioNome ?? '').toLowerCase();
-          return termos.some(t => nome.includes(t));
-        });
-        // Ajusta totais aproximados
-        dados.totalRegistros = dados.data.length;
-      }
-    }
-
-    return NextResponse.json(dados, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=60',
-      },
-    });
-  } catch (erro) {
-    console.error('[API /contratacoes]', erro);
-    const mensagem = erro instanceof Error ? erro.message : 'Erro desconhecido';
-    const statusCode = mensagem.includes('PNCP API erro') ? 502 : 500;
-
-    return NextResponse.json(
-      {
-        erro: 'Falha ao consultar o PNCP',
-        detalhe: mensagem,
-        timestamp: new Date().toISOString(),
-      },
-      { status: statusCode }
+  // Portal (idUsuario=1 → ComprasNet)
+  const idUsuario = sp.get('idUsuario');
+  if (idUsuario === '1') {
+    query = query.or(
+      'usuario_nome.ilike.%compras.gov%,usuario_nome.ilike.%comprasnet%,usuario_nome.ilike.%compras gov%',
     );
   }
+
+  // Por padrão exibe apenas propostas ainda abertas.
+  // Passe somenteAtivas=false para ver históricas também.
+  const somenteAtivas = sp.get('somenteAtivas') !== 'false';
+  if (somenteAtivas) {
+    query = query.gte('data_encerramento_proposta', new Date().toISOString());
+  }
+
+  query = query
+    .order('data_encerramento_proposta', { ascending: true })
+    .range(offset, offset + tamPagina - 1);
+
+  const { data, count, error } = await query;
+
+  if (error) {
+    console.error('[/api/contratacoes]', error);
+    return NextResponse.json(
+      { erro: 'Erro ao consultar o banco de dados', detalhe: error.message },
+      { status: 500 },
+    );
+  }
+
+  const totalRegistros = count ?? 0;
+  const totalPaginas   = Math.ceil(totalRegistros / tamPagina);
+  const contratacoes   = ((data as LicitacaoRow[]) ?? []).map(rowToContratacao);
+
+  return NextResponse.json(
+    {
+      data:             contratacoes,
+      totalRegistros,
+      totalPaginas,
+      numeroPagina:     pagina,
+      paginasRestantes: Math.max(0, totalPaginas - pagina),
+      empty:            contratacoes.length === 0,
+    },
+    {
+      headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
+    },
+  );
 }
