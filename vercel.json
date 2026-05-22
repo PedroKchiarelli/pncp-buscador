@@ -1,7 +1,8 @@
 {
+  "regions": ["gru1"],
   "crons": [
     {
-      "path": "/api/sync?maxPaginas=5",
+      "path": "/api/sync",
       "schedule": "0 5 * * *"
     }
   ]

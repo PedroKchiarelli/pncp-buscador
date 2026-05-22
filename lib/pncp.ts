@@ -67,7 +67,7 @@ export async function buscarContratacoes(
   const url = `${BASE_CONSULTA}/contratacoes/proposta?${params.toString()}`;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), 25000);
 
   let resposta: Response;
   try {
@@ -79,7 +79,7 @@ export async function buscarContratacoes(
   } catch (e: unknown) {
     clearTimeout(timeout);
     if (e instanceof Error && e.name === 'AbortError') {
-      throw new Error('PNCP API erro: timeout após 15 segundos. Tente remover alguns filtros.');
+      throw new Error('PNCP API erro: timeout após 25 segundos. Tente remover alguns filtros.');
     }
     throw e;
   } finally {
