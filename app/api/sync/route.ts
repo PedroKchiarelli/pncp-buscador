@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   }
 
   const params      = request.nextUrl.searchParams;
-  const maxPaginas  = Math.min(50, Math.max(1, Number(params.get('maxPaginas') ?? '20')));
+  const maxPaginas  = Math.min(200, Math.max(1, Number(params.get('maxPaginas') ?? '100')));
   const pagInicio   = Math.max(1, Number(params.get('pagInicio') ?? '1'));
 
   const admin = createAdminClient();
@@ -61,7 +61,9 @@ export async function GET(request: NextRequest) {
 
   try {
     // Primeira página para descobrir o total de páginas disponíveis
-    const primeira = await buscarPublicacoes({ pagina: pagInicio, tamanhoPagina: 50 });
+    // tamanhoPagina=10 é mais confiável no PNCP para janelas de data largas
+    const TAM_PAG = 10;
+    const primeira = await buscarPublicacoes({ pagina: pagInicio, tamanhoPagina: TAM_PAG });
 
     const totalDisponiveis = primeira.totalPaginas;
     const ultimaPagina     = Math.min(pagInicio + maxPaginas - 1, totalDisponiveis);
@@ -80,7 +82,7 @@ export async function GET(request: NextRequest) {
     for (let i = 0; i < pagRestantes.length; i += 5) {
       const lote = pagRestantes.slice(i, i + 5);
       const resultados = await Promise.allSettled(
-        lote.map(p => buscarPublicacoes({ pagina: p, tamanhoPagina: 50 })),
+        lote.map(p => buscarPublicacoes({ pagina: p, tamanhoPagina: TAM_PAG })),
       );
 
       // Para graciosamente em páginas inválidas (PNCP retorna erro além do limite)
