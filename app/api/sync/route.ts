@@ -1,15 +1,14 @@
 // app/api/sync/route.ts
 // ============================================================
-// Sincroniza dados do PNCP → Supabase.
+// Sincroniza licitações abertas do PNCP → Supabase.
 // Deve ser chamado pelo Vercel Cron ou manualmente.
 //
 // Auth: Authorization: Bearer <SYNC_SECRET>
 //       ou Authorization: Bearer <CRON_SECRET>  (Vercel injeta automaticamente)
 //
 // Query params:
-//   dataInicial  YYYYMMDD  padrão: 7 dias atrás
-//   dataFinal    YYYYMMDD  padrão: hoje
 //   maxPaginas   número    padrão: 20 (20 × 50 = 1.000 registros por chamada)
+//   pagInicio    número    padrão: 1  (para paginar syncs grandes manualmente)
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -19,16 +18,6 @@ import { contratacaoToRow } from '@/lib/mappers';
 import type { LicitacaoRow } from '@/types/db';
 
 export const maxDuration = 60;
-
-function hoje(): string {
-  return new Date().toISOString().slice(0, 10).replace(/-/g, '');
-}
-
-function diasAtras(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10).replace(/-/g, '');
-}
 
 function autorizado(request: NextRequest): boolean {
   const syncSecret = process.env.SYNC_SECRET;
@@ -52,16 +41,15 @@ export async function GET(request: NextRequest) {
   }
 
   const params      = request.nextUrl.searchParams;
-  const dataInicial = params.get('dataInicial') ?? diasAtras(7);
-  const dataFinal   = params.get('dataFinal')   ?? hoje();
   const maxPaginas  = Math.min(50, Math.max(1, Number(params.get('maxPaginas') ?? '20')));
+  const pagInicio   = Math.max(1, Number(params.get('pagInicio') ?? '1'));
 
   const admin = createAdminClient();
 
   // Registra início do sync
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: logData } = await (admin.from('sync_log') as any)
-    .insert({ data_inicial: dataInicial, data_final: dataFinal })
+    .insert({ data_inicial: String(pagInicio), data_final: String(pagInicio + maxPaginas - 1) })
     .select('id')
     .single();
 
@@ -72,23 +60,27 @@ export async function GET(request: NextRequest) {
   let temMais            = false;
 
   try {
-    // Primeira página para descobrir o total
-    const primeira = await buscarPublicacoes({ dataInicial, dataFinal, pagina: 1, tamanhoPagina: 50 });
+    // Primeira página para descobrir o total de páginas disponíveis
+    const primeira = await buscarPublicacoes({ pagina: pagInicio, tamanhoPagina: 50 });
 
-    const totalPaginas = Math.min(primeira.totalPaginas, maxPaginas);
-    temMais = primeira.totalPaginas > maxPaginas;
+    const totalDisponiveis = primeira.totalPaginas;
+    const ultimaPagina     = Math.min(pagInicio + maxPaginas - 1, totalDisponiveis);
+    temMais = ultimaPagina < totalDisponiveis;
 
     await upsertBatch(admin, primeira.data.map(contratacaoToRow));
     registrosUpserted  += primeira.data.length;
     paginasProcessadas  = 1;
 
     // Páginas restantes em lotes paralelos de 5
-    const pagRestantes = Array.from({ length: totalPaginas - 1 }, (_, i) => i + 2);
+    const pagRestantes = Array.from(
+      { length: ultimaPagina - pagInicio },
+      (_, i) => pagInicio + i + 1,
+    );
 
     for (let i = 0; i < pagRestantes.length; i += 5) {
       const lote      = pagRestantes.slice(i, i + 5);
       const resultados = await Promise.all(
-        lote.map(p => buscarPublicacoes({ dataInicial, dataFinal, pagina: p, tamanhoPagina: 50 })),
+        lote.map(p => buscarPublicacoes({ pagina: p, tamanhoPagina: 50 })),
       );
       const rows = resultados.flatMap(r => r.data.map(contratacaoToRow));
       await upsertBatch(admin, rows);
@@ -112,10 +104,8 @@ export async function GET(request: NextRequest) {
       status:    'ok',
       registros: registrosUpserted,
       paginas:   paginasProcessadas,
-      dataInicial,
-      dataFinal,
       temMais,
-      ...(temMais && { dica: 'Chame novamente ajustando dataFinal para cobrir datas mais antigas' }),
+      ...(temMais && { proximaPagInicio: pagInicio + maxPaginas, dica: `Chame com ?pagInicio=${pagInicio + maxPaginas} para continuar` }),
     });
 
   } catch (err) {

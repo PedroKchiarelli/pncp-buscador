@@ -95,51 +95,13 @@ export async function buscarContratacoes(
 }
 
 // ============================================================
-// Busca contratações por data de publicação — usado pelo sync
-// Endpoint: /contratacoes/publicacoes  (diferente do /proposta)
-// Requer: dataInicial + dataFinal obrigatórios
+// Alias para sync — reutiliza /proposta (o endpoint /publicacoes
+// do PNCP não responde de forma confiável).
 // ============================================================
 export async function buscarPublicacoes(
-  filtros: FiltrosBusca & { dataInicial: string; dataFinal: string },
+  filtros: FiltrosBusca,
 ): Promise<RespostaContratacoes> {
-  const params = new URLSearchParams();
-  params.set('pagina',       String(filtros.pagina ?? 1));
-  params.set('tamanhoPagina', String(Math.max(filtros.tamanhoPagina ?? 50, TAMANHO_PAGINA_MINIMO)));
-  params.set('dataInicial',  filtros.dataInicial);
-  params.set('dataFinal',    filtros.dataFinal);
-
-  if (filtros.codigoModalidadeContratacao) {
-    params.set('codigoModalidadeContratacao', String(filtros.codigoModalidadeContratacao));
-  }
-
-  const url = `${BASE_CONSULTA}/contratacoes/publicacoes?${params.toString()}`;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-
-  let resposta: Response;
-  try {
-    resposta = await fetch(url, {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-      cache: 'no-store',
-    });
-  } catch (e: unknown) {
-    clearTimeout(timeout);
-    if (e instanceof Error && e.name === 'AbortError') {
-      throw new Error('PNCP /publicacoes timeout após 15s');
-    }
-    throw e;
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!resposta.ok) {
-    const erro = await resposta.text();
-    throw new Error(`PNCP /publicacoes erro ${resposta.status}: ${erro}`);
-  }
-
-  return resposta.json();
+  return buscarContratacoes(filtros);
 }
 
 // ============================================================
