@@ -54,9 +54,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Por padrão exibe apenas propostas ainda abertas.
-  // Passe somenteAtivas=false para ver históricas também.
-  const somenteAtivas = sp.get('somenteAtivas') !== 'false';
+  // Filtra apenas propostas abertas se explicitamente solicitado
+  const somenteAtivas = sp.get('somenteAtivas') === 'true';
   if (somenteAtivas) {
     query = query.gte('data_encerramento_proposta', new Date().toISOString());
   }

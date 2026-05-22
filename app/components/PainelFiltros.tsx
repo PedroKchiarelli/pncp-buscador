@@ -7,6 +7,7 @@ interface Filtros {
   modalidade: string;
   portal: string;
   uf: string;
+  somenteAtivas: boolean;
 }
 
 interface Props {
@@ -38,7 +39,7 @@ export default function PainelFiltros({ filtros, total, carregando, onChange, on
   const set = (key: keyof Filtros) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     onChange({ ...filtros, [key]: e.target.value });
 
-  const temFiltros = filtros.q || filtros.modalidade || filtros.portal || filtros.uf;
+  const temFiltros = filtros.q || filtros.modalidade || filtros.portal || filtros.uf || filtros.somenteAtivas;
 
   return (
     <aside style={{
@@ -114,6 +115,22 @@ export default function PainelFiltros({ filtros, total, carregando, onChange, on
             <option key={uf} value={uf}>{uf}</option>
           ))}
         </select>
+      </div>
+
+      {/* Toggle apenas abertas */}
+      <div style={{ marginBottom: '24px' }}>
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          cursor: 'pointer', fontSize: '13px', color: 'var(--text-primary)',
+        }}>
+          <input
+            type="checkbox"
+            checked={filtros.somenteAtivas}
+            onChange={e => onChange({ ...filtros, somenteAtivas: e.target.checked })}
+            style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--accent)' }}
+          />
+          Apenas com propostas abertas
+        </label>
       </div>
 
       {/* Botões */}

@@ -11,9 +11,10 @@ interface Filtros {
   modalidade: string;
   portal: string;
   uf: string;
+  somenteAtivas: boolean;
 }
 
-const FILTROS_INICIAIS: Filtros = { q: '', modalidade: '6', portal: '', uf: '' };
+const FILTROS_INICIAIS: Filtros = { q: '', modalidade: '', portal: '', uf: '', somenteAtivas: false };
 const TAMANHO_PAGINA = 50;
 const CHAVE_FAVORITOS = 'pncp_favoritos';
 
@@ -44,10 +45,11 @@ export default function HomePage() {
     const params = new URLSearchParams();
     params.set('tamanhoPagina', String(TAMANHO_PAGINA));
     params.set('pagina', String(p));
-    if (f.q)          params.set('q', f.q);
-    if (f.modalidade) params.set('codigoModalidadeContratacao', f.modalidade);
-    if (f.portal)     params.set('idUsuario', f.portal);
-    if (f.uf)         params.set('ufSigla', f.uf);
+    if (f.q)             params.set('q', f.q);
+    if (f.modalidade)    params.set('codigoModalidadeContratacao', f.modalidade);
+    if (f.portal)        params.set('idUsuario', f.portal);
+    if (f.uf)            params.set('ufSigla', f.uf);
+    if (f.somenteAtivas) params.set('somenteAtivas', 'true');
     try {
       const res = await fetch('/api/contratacoes?' + params.toString());
       const dados = await res.json();
