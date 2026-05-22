@@ -78,14 +78,23 @@ export async function GET(request: NextRequest) {
     );
 
     for (let i = 0; i < pagRestantes.length; i += 5) {
-      const lote      = pagRestantes.slice(i, i + 5);
-      const resultados = await Promise.all(
+      const lote = pagRestantes.slice(i, i + 5);
+      const resultados = await Promise.allSettled(
         lote.map(p => buscarPublicacoes({ pagina: p, tamanhoPagina: 50 })),
       );
-      const rows = resultados.flatMap(r => r.data.map(contratacaoToRow));
+
+      // Para graciosamente em páginas inválidas (PNCP retorna erro além do limite)
+      const sucesso = resultados.filter(r => r.status === 'fulfilled');
+      if (sucesso.length === 0) { temMais = false; break; }
+
+      const rows = sucesso.flatMap(r =>
+        (r as PromiseFulfilledResult<typeof primeira>).value.data.map(contratacaoToRow),
+      );
       await upsertBatch(admin, rows);
       registrosUpserted  += rows.length;
-      paginasProcessadas += lote.length;
+      paginasProcessadas += sucesso.length;
+
+      if (sucesso.length < lote.length) { temMais = false; break; }
     }
 
     // Fecha log

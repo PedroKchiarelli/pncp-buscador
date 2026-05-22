@@ -87,11 +87,17 @@ export async function buscarContratacoes(
   }
 
   if (!resposta.ok) {
-    const erro = await resposta.text();
-    throw new Error(`PNCP API erro ${resposta.status}: ${erro}`);
+    const texto = await resposta.text().catch(() => '');
+    throw new Error(`PNCP API erro ${resposta.status}: ${texto}`);
   }
 
-  return resposta.json();
+  const texto = await resposta.text();
+  try {
+    return JSON.parse(texto);
+  } catch {
+    // PNCP às vezes retorna JSON truncado em páginas além do limite
+    throw new Error(`PNCP resposta inválida (página inexistente ou limite atingido)`);
+  }
 }
 
 // ============================================================
