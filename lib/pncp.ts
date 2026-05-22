@@ -110,7 +110,7 @@ export async function buscarPublicacoes(
 ): Promise<RespostaContratacoes> {
   if (!filtros.dataFinal) {
     const d = new Date();
-    d.setDate(d.getDate() + 90);
+    d.setDate(d.getDate() + 15);
     filtros = { ...filtros, dataFinal: formatarData(d) };
   }
   return buscarContratacoes(filtros);
