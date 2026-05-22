@@ -101,12 +101,18 @@ export async function buscarContratacoes(
 }
 
 // ============================================================
-// Alias para sync — reutiliza /proposta (o endpoint /publicacoes
-// do PNCP não responde de forma confiável).
+// Alias para sync — usa /proposta com dataFinal 90 dias à frente
+// para capturar todas as licitações abertas, não só as de hoje.
+// (dataFinal = limite máximo de dataEncerramentoProposta)
 // ============================================================
 export async function buscarPublicacoes(
   filtros: FiltrosBusca,
 ): Promise<RespostaContratacoes> {
+  if (!filtros.dataFinal) {
+    const d = new Date();
+    d.setDate(d.getDate() + 90);
+    filtros = { ...filtros, dataFinal: formatarData(d) };
+  }
   return buscarContratacoes(filtros);
 }
 
